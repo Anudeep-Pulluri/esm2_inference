@@ -30,29 +30,39 @@ for i, seq in enumerate(batch):
 
 ![GPU Distribution Diagram](gpu_distribution.png)
 
-Benchmark Results
+## Benchmark Results
 
 1 GPUs -> 1.29 seconds
 2 GPUs -> 0.64 seconds
 4 GPUs -> 0.64 seconds
 8 GPUs -> 0.63 seconds
 
-(GPU counts simulated on CPU)
+*(GPU counts simulated on CPU)*
 
-Setup Instructions (Local)
+---
+
+## Setup Instructions
+
+**Local**
+
 uvicorn app:app --host 0.0.0.0 --port 8000
-Docker
+
+**Docker**
 docker build -t esm2_inference .
 docker run -p 8000:8000 esm2_inference
-Kubernetes
+**Kubernetes**
 kubectl apply -f deployment.yaml
 kubectl apply -f service.yaml
 
-CI/CD
-GitHub Actions automatically runs pytest on every push.
+---
 
-Future Improvements
+**CI/CD**
+GitHub Actions automatically runs `pytest` on every push.
 
-Real multi‑GPU inference with CUDA
-Async batching and streaming responses
-Model caching and monitoring metrics
+---
+
+**Future Improvements**
+
+- Real multi‑GPU inference with CUDA
+- Async batching and streaming responses
+- Model caching and monitoring metrics
