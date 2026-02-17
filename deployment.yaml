@@ -1,0 +1,48 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: esm2-inference
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: esm2
+  template:
+    metadata:
+      labels:
+        app: esm2
+    spec:
+      containers:
+      - name: esm2
+        image: esm2_inference:latest
+        resources:
+          limits:
+            nvidia.com/gpu: 8
+        ports:
+        - containerPort: 8000
+
+        # Startup probe to ensure model loads before marking pod ready
+        startupProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          periodSeconds: 10
+          failureThreshold: 30
+
+        # Mount shared memory for inter-GPU communication
+        volumeMounts:
+          - name: shm
+            mountPath: /dev/shm
+
+      # Define shared memory volume
+      volumes:
+        - name: shm
+          emptyDir:
+            medium: Memory
+            sizeLimit: 2Gi
+
+      # Allow scheduling on GPU nodes
+      tolerations:
+        - key: nvidia.com/gpu
+          operator: Exists
+          effect: NoSchedule
