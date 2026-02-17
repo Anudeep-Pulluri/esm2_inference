@@ -18,7 +18,7 @@ Client → FastAPI → ESM2Inference → Model replicas (1–8 GPUs)
 
 
 ## GPU Distribution Pseudocode
-```python
+
 num_gpus = torch.cuda.device_count() or 4
 models = [load_model().to(f"cuda:{i}") for i in range(num_gpus)]
 for i, seq in enumerate(batch):
