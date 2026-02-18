@@ -20,7 +20,7 @@ jobs:
       # Step 3: Install dependencies (including flake8 and kubeconform)
       - name: Install dependencies
         run: |
-          pip install pytest flake8 torch torchvision torchaudio transformers fastapi uvicorn
+          pip install pytest flake8 black torch torchvision torchaudio transformers fastapi uvicorn
 
       # Step 4: Run linting (flake8)
       - name: Run linting
@@ -29,6 +29,11 @@ jobs:
           flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
           # Warn (but don’t fail) on style issues
           flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
+
+      # Step 4.1: Check code formatting with Black
+      - name: Check code formatting (Black)
+        run: |
+          black --check .
 
       # Step 5: Run tests (pytest)
       - name: Run tests
