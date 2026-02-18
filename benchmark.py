@@ -4,8 +4,9 @@ import time
 
 from inference import ESM2Inference
 
+
 def benchmark():
-    '''
+    """
     Benchmark the simulated multi-GPU inference performance.
 
     This function measures how inference time scales when the number of
@@ -13,9 +14,9 @@ def benchmark():
     available GPUs increases from 1 to 8. Since this environment has no
 
     real GPUs, the GPU count is mocked to simulate scaling behavior.
-    '''
+    """
 
-     # Initialize the inference model
+    # Initialize the inference model
 
     model = ESM2Inference()
 
@@ -31,7 +32,7 @@ def benchmark():
 
         model.device_count = gpus  # mock GPU count
 
-         # Record start time
+        # Record start time
 
         start = time.time()
 
@@ -44,8 +45,9 @@ def benchmark():
         end = time.time()
 
         # Print the time taken for this GPU configuration
-        
+
         print(f"{gpus} GPUs -> {end - start:.2f} seconds")
+
 
 if __name__ == "__main__":
     benchmark()

@@ -18,29 +18,36 @@ model = ESM2Inference()
 
 # Define a Pydantic model for validating incoming JSON requests
 
+
 class SequenceInput(BaseModel):
 
-    seq: str # The input protein sequence string
+    seq: str  # The input protein sequence string
+
 
 # Health check endpoint
 
 # Returns the number of GPUs detected (mocked if none exist)
 
+
 @app.get("/health")
 def health():
     return {"gpus": model.device_count}
+
 
 # Endpoint for single sequence inference
 
 # Accepts one sequence and returns its model embedding or result
 
+
 @app.post("/predict")
 def predict_single(data: SequenceInput):
     return {"result": model.predict(data.seq)}
 
+
 # Endpoint for batch inference
 
 # Accepts a list of sequences (up to 64) and returns results for all
+
 
 @app.post("/predict/batch")
 def predict_batch(sequences: list[str]):

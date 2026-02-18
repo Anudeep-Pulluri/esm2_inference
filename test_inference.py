@@ -1,6 +1,7 @@
 # This class handles model loading and prediction
 from inference import ESM2Inference
 
+
 def test_predict():
     """
     Unit test for the ESM2Inference.predict() function.
@@ -13,10 +14,10 @@ def test_predict():
 
     model = ESM2Inference()
 
-     # Run prediction on a mock protein sequence
+    # Run prediction on a mock protein sequence
 
     output = model.predict("MADEUPSEQ")
 
     # Assert that the output list contains exactly one result
-    
+
     assert len(output) == 1
