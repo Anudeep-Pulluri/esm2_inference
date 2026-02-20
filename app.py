@@ -1,11 +1,13 @@
 # Import FastAPI for building the web API
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 
 # Import BaseModel from Pydantic for request validation
 from pydantic import BaseModel
 
 # Import the ESm2Inference class that handles model loading and prediction
 from inference import ESM2Inference
+
+from typing import List
 
 # Intialize the FastAPI app
 app = FastAPI()
@@ -21,7 +23,12 @@ model = ESM2Inference()
 
 class SequenceInput(BaseModel):
 
-    seq: str  # The input protein sequence string
+    sequence: str  # The input protein sequence string
+
+
+class BatchInput(BaseModel):
+
+    sequences: List[str]  # List of protein sequences
 
 
 # Health check endpoint
@@ -31,7 +38,7 @@ class SequenceInput(BaseModel):
 
 @app.get("/health")
 def health():
-    return {"gpus": model.device_count}
+    return {"status": "ok", "gpus": model.device_count}
 
 
 # Endpoint for single sequence inference
@@ -41,7 +48,8 @@ def health():
 
 @app.post("/predict")
 def predict_single(data: SequenceInput):
-    return {"result": model.predict(data.seq)}
+    result = model.predict(data.sequence)
+    return {"embedding": result}
 
 
 # Endpoint for batch inference
@@ -50,5 +58,10 @@ def predict_single(data: SequenceInput):
 
 
 @app.post("/predict/batch")
-def predict_batch(sequences: list[str]):
-    return {"result": model.predict(sequences)}
+def predict_batch(data: BatchInput):
+    # Enforce 64-sequence limit
+    if len(data.sequences) > 64:
+        raise HTTPException(status_code=400, detail="Batch size limit is 64")
+
+    result = model.predict(data.sequences)
+    return {"embeddings": result}

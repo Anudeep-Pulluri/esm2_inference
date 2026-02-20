@@ -6,7 +6,8 @@ from transformers import AutoTokenizer, AutoModel
 
 class ESM2Inference:
     def __init__(self, model_name="facebook/esm2_t33_650M_UR50D"):
-        # Loads the tokenizer and prepares model replicas based on GPU availability.
+        # Loads the tokenizer
+        # prepares model replicas based on GPU availability.
 
         # Detect how many GPUs are available (returns 0 on CPU-only systems)
 
@@ -59,6 +60,9 @@ class ESM2Inference:
 
             sequences = [sequences]
 
+        if not sequences:
+            return []
+
         # Tokenize the input sequences and prepare tensors
 
         inputs = self.tokenizer(sequences, return_tensors="pt", padding=True)
@@ -85,4 +89,5 @@ class ESM2Inference:
         outputs.append(out.last_hidden_state.mean().cpu().numpy())
 
         # Convert NumPy arrays to Python lists for JSON serialization
-        return {"result": [out.tolist() for out in outputs]}
+        result = [out.tolist() for out in outputs]
+        return {"result": result}
