@@ -1,93 +1,181 @@
+"""
+inference.py
+
+Multi-GPU ESM2 inference engine.
+
+Capabilities:
+- Automatic GPU detection (0, 1, 4, 8, etc.)
+- CPU fallback when CUDA is unavailable
+- One model replica per device
+- Parallel batch distribution across devices
+- Mock-friendly GPU simulation for CI
+"""
+
 import torch
 from transformers import AutoTokenizer, AutoModel
-
-# For handling model loading and inference
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from typing import List, Union
+import time
 
 
 class ESM2Inference:
-    def __init__(self, model_name="facebook/esm2_t33_650M_UR50D"):
-        # Loads the tokenizer
-        # prepares model replicas based on GPU availability.
+    """
+    Core inference engine responsible for:
+    - Loading model replicas per available device
+    - Distributing batch inputs across devices
+    - Executing inference in parallel
+    """
 
-        # Detect how many GPUs are available (returns 0 on CPU-only systems)
-
-        self.device_count = torch.cuda.device_count()
-
-        # Store the model name
-
+    def __init__(
+        self,
+        model_name: str = "facebook/esm2_t33_650M_UR50D",
+        simulate_latency: float = 0.0,  # used for benchmark simulation
+    ):
         self.model_name = model_name
 
-        # Placeholder for model replicas
+        # Artificial latency for benchmark simulation (no real GPU required)
+        self.simulate_latency = simulate_latency
 
+        # Detect whether CUDA hardware exists
+        self.physical_cuda_available = torch.cuda.is_available()
+
+        # Detect number of visible CUDA devices
+        self.logical_device_count = torch.cuda.device_count()
+
+        # If no GPU detected, fallback to single CPU device
+        if self.logical_device_count == 0:
+            self.logical_device_count = 1
+
+        # Store device identifiers and model replicas
+        self.devices = []
         self.models = []
 
-        # Load the tokenizer for the ESM2 model
+        # Readiness flag used by /health endpoint
+        self.ready = False
 
-        self.tokenizer = AutoTokenizer.from_pretrained(model_name)
+        # Load tokenizer once (shared across replicas)
+        self.tokenizer = AutoTokenizer.from_pretrained(self.model_name)
 
-        # Load the model(s) into memory
-
+        # Load model replicas per device
         self._load_models()
+
+        self.ready = True
 
     def _load_models(self):
         """
-        Load the model onto the appropriate device.
-        Uses MPS (Apple GPU) if available, otherwise CPU.
-        """
-        # Choose device: MPS for Apple Silicon, else CPU
+        Load one model replica per detected device.
 
-        self.device = "mps" if torch.backends.mps.is_available() else "cpu"
-
-        print(f"Using device: {self.device}")
-
-        # Load the model and move it to the selected device
-
-        model = AutoModel.from_pretrained(self.model_name).to(self.device)
-
-        # Store the model in a list (mocked single device for now)
-
-        self.models = [model]
-
-    def predict(self, sequences):
-        """
-        Perform inference on one or more input sequences.
-        Handles both single-sequence and batch inputs.
+        This enables parallel inference without inter-device locking.
+        Each GPU receives its own independent model instance.
         """
 
-        # Convert a single string input into a list
+        for i in range(self.logical_device_count):
 
-        if isinstance(sequences, str):
+            # Assign CUDA device if available, otherwise CPU
+            if self.physical_cuda_available:
+                device = f"cuda:{i}"
+            else:
+                device = "cpu"
 
-            sequences = [sequences]
+            # Load pretrained ESM-2 model
+            model = AutoModel.from_pretrained(self.model_name)
 
-        if not sequences:
-            return []
+            # Move model to assigned device
+            model.to(device)
 
-        # Tokenize the input sequences and prepare tensors
+            # Set to evaluation mode (disable dropout, training ops)
+            model.eval()
 
+            self.devices.append(device)
+            self.models.append(model)
+
+    def _infer_on_device(self, model, device, sequences: List[str]):
+        """
+        Execute inference on a specific device.
+
+        This method:
+        - Tokenizes input sequences
+        - Moves tensors to target device
+        - Performs forward pass
+        - Returns mean-pooled embeddings
+        """
+
+        # Optional simulated latency for scaling benchmark
+        if self.simulate_latency > 0:
+            time.sleep(self.simulate_latency)
+
+        # Tokenize sequences with padding
         inputs = self.tokenizer(sequences, return_tensors="pt", padding=True)
 
-        # Move all tensors to the selected device
+        # Move tensors to correct device
+        inputs = {k: v.to(device) for k, v in inputs.items()}
 
-        inputs = {k: v.to(self.device) for k, v in inputs.items()}
-
-        # Placeholder for output embeddings
-
-        outputs = []
-
-        # Use the first (or only) model replica
-
-        model = self.models[0]
-
-        # Disable gradient computation for inference
-
+        # Disable gradient computation for inference efficiency
         with torch.no_grad():
-            out = model(**inputs)
+            outputs = model(**inputs)
 
-        # Convert model output to a NumPy array and store it
+        # Mean-pool token embeddings to get sequence-level representation
+        embeddings = outputs.last_hidden_state.mean(dim=1)
 
-        outputs.append(out.last_hidden_state.mean().cpu().numpy())
+        # Move back to CPU for safe serialization
+        return embeddings.cpu().tolist()
 
-        # Convert NumPy arrays to Python lists for JSON serialization
-        result = [out.tolist() for out in outputs]
-        return {"result": result}
+    def predict(self, sequences: Union[str, List[str]]):
+        """
+        Perform distributed inference.
+
+        Supports:
+        - Single sequence (string)
+        - Batch of sequences (list[str])
+
+        Batch is distributed across devices using round-robin strategy.
+        """
+
+        # Normalize single input to list
+        if isinstance(sequences, str):
+            sequences = [sequences]
+
+        if not isinstance(sequences, list):
+            raise ValueError("Input must be a string or list of strings.")
+
+        # Handle empty input gracefully
+        if len(sequences) == 0:
+            return {"result": []}
+
+        num_devices = len(self.models)
+
+        # Create one chunk per device
+        # Round-robin ensures balanced distribution across GPUs
+        chunks = [[] for _ in range(num_devices)]
+
+        for idx, seq in enumerate(sequences):
+
+            # Basic validation of protein sequence
+            if not isinstance(seq, str) or len(seq.strip()) == 0:
+                raise ValueError("Invalid protein sequence.")
+
+            chunks[idx % num_devices].append(seq)
+
+        results = []
+
+        # Execute inference in parallel across devices
+        with ThreadPoolExecutor(max_workers=num_devices) as executor:
+
+            futures = []
+
+            for i in range(num_devices):
+                if chunks[i]:  # Only submit work if device has data
+                    futures.append(
+                        executor.submit(
+                            self._infer_on_device,
+                            self.models[i],
+                            self.devices[i],
+                            chunks[i],
+                        )
+                    )
+
+            # Collect results as they complete
+            for future in as_completed(futures):
+                results.extend(future.result())
+
+        return {"result": results}

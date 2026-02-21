@@ -1,46 +1,56 @@
+# Name of the GitHub Actions workflow
 name: CI
 
-on: [push]
+# Trigger workflow on every push and pull request
+on:
+  push:
+  pull_request:
 
 jobs:
-  test:
-    runs-on: ubuntu-latest
+  # Single job that handles build and test validation
+  build-test:
+    runs-on: ubuntu-latest  # Use latest Ubuntu runner
 
     steps:
-      # Step 1: Checkout the repository
+      # Step 1: Checkout repository code
       - name: Checkout repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       # Step 2: Set up Python environment
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
-          python-version: "3.10"
+          python-version: 3.10  # Match project Python version
 
-      # Step 3: Install dependencies (including flake8 and kubeconform)
+      # Step 3: Install project and development dependencies
       - name: Install dependencies
         run: |
-          pip install pytest flake8 black torch torchvision torchaudio transformers fastapi uvicorn
+          pip install -r requirements.txt
+          pip install pytest flake8 black
 
-      # Step 4: Run linting (flake8)
-      - name: Run linting
-        run: |
-          # Fail on syntax or critical errors
-          flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
-          # Warn (but don’t fail) on style issues
-          flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
+      # Step 4: Run flake8 linter for code quality checks
+      - name: Lint
+        run: flake8 .
 
-      # Step 4.1: Check code formatting with Black
-      - name: Check code formatting (Black)
-        run: |
-          black --check .
+      # Step 5: Verify code formatting using Black (no changes allowed)
+      - name: Format check
+        run: black --check .
 
-      # Step 5: Run tests (pytest)
+      # Step 6: Run unit tests using pytest
       - name: Run tests
-        run: pytest -v
+        run: pytest
 
-      # Step 6: Validate Kubernetes manifests using kubeconform
+      # Step 7: Build Docker image to ensure containerization works
+      - name: Build Docker image
+        run: docker build -t esm2_inference .
+
+      # Step 8: Validate Kubernetes manifests using kubeconform
       - name: Validate Kubernetes manifests
         run: |
-          curl -L https://github.com/yannh/kubeconform/releases/latest/download/kubeconform-linux-amd64.tar.gz \
-            | tar xz && ./kubeconform -summary deployment.yaml service.yaml
+          # Download kubeconform binary
+          curl -LO https://github.com/yannh/kubeconform/releases/latest/download/kubeconform-linux-amd64.tar.gz
+          tar xf kubeconform-linux-amd64.tar.gz
+          chmod +x kubeconform
+
+          # Validate all YAML files inside k8s directory
+          ./kubeconform -summary k8s/*.yaml

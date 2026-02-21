@@ -1,67 +1,91 @@
-# Import FastAPI for building the web API
+# FastAPI framework for building the inference API
 from fastapi import FastAPI, HTTPException
 
-# Import BaseModel from Pydantic for request validation
+# Pydantic for request validation and schema enforcement
 from pydantic import BaseModel
 
-# Import the ESm2Inference class that handles model loading and prediction
-from inference import ESM2Inference
-
+# Typing support for batch inputs
 from typing import List
 
-# Intialize the FastAPI app
-app = FastAPI()
+# Core inference engine (handles multi-GPU logic)
+from inference import ESM2Inference
 
-# Create a single instance of the ESM2Inference model when the app starts
+# Initialize FastAPI application with metadata
+app = FastAPI(
+    title="ESM-2 Multi-GPU Inference API",
+    description="Production-ready multi-GPU inference service for ESM-2",
+    version="1.0.0",
+)
 
-# This ensures the model is loaded only once and reused for all requests
 
+# Initialize the inference model once at startup.
+# This ensures model replicas are loaded into GPU memory only once,
+# avoiding repeated initialization per request.
 model = ESM2Inference()
 
-# Define a Pydantic model for validating incoming JSON requests
 
-
+# Schema for single-sequence inference request
 class SequenceInput(BaseModel):
+    # Amino acid sequence string
+    sequence: str
 
-    sequence: str  # The input protein sequence string
 
-
+# Schema for batch inference request
 class BatchInput(BaseModel):
-
-    sequences: List[str]  # List of protein sequences
-
-
-# Health check endpoint
-
-# Returns the number of GPUs detected (mocked if none exist)
+    # List of amino acid sequences
+    sequences: List[str]
 
 
+# Health endpoint for Kubernetes probes and monitoring systems
 @app.get("/health")
 def health():
-    return {"status": "ok", "gpus": model.device_count}
+    """
+    Reports service readiness and GPU availability.
+
+    Used by:
+    - Kubernetes startupProbe
+    - readinessProbe
+    - livenessProbe
+    - Monitoring systems
+    """
+
+    # If model is still loading, report service unavailable
+    if not model.ready:
+        raise HTTPException(status_code=503, detail="Model loading")
+
+    return {
+        "status": "ok",
+        # Whether physical CUDA devices are present
+        "physical_cuda_available": model.physical_cuda_available,
+        # Number of logical devices detected (0, 1, 4, 8)
+        "logical_devices": model.logical_device_count,
+        # List of device identifiers used for model replicas
+        "devices": model.devices,
+    }
 
 
-# Endpoint for single sequence inference
-
-# Accepts one sequence and returns its model embedding or result
-
-
+# Single sequence inference endpoint
 @app.post("/predict")
 def predict_single(data: SequenceInput):
-    result = model.predict(data.sequence)
-    return {"embedding": result}
+    """
+    Performs inference on a single protein sequence.
+    Automatically routed to appropriate GPU replica.
+    """
+    return model.predict(data.sequence)
 
 
-# Endpoint for batch inference
-
-# Accepts a list of sequences (up to 64) and returns results for all
-
-
+# Batch inference endpoint (max 64 sequences)
 @app.post("/predict/batch")
 def predict_batch(data: BatchInput):
-    # Enforce 64-sequence limit
-    if len(data.sequences) > 64:
-        raise HTTPException(status_code=400, detail="Batch size limit is 64")
+    """
+    Performs distributed batch inference across available GPUs.
 
-    result = model.predict(data.sequences)
-    return {"embeddings": result}
+    The batch is automatically split across detected GPU replicas
+    for parallel processing.
+    """
+
+    # Enforce batch size limit to prevent OOM and ensure predictable latency
+    if len(data.sequences) > 64:
+        raise HTTPException(status_code=400, detail="Batch limit is 64")
+
+    return model.predict(data.sequences)

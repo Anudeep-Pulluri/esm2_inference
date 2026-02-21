@@ -1,0 +1,25 @@
+# API version for PodDisruptionBudget resource
+apiVersion: policy/v1
+
+# Defines a PodDisruptionBudget
+# This ensures a minimum number of pods remain available
+# during voluntary disruptions (e.g., node upgrades, scaling, maintenance).
+kind: PodDisruptionBudget
+
+metadata:
+  # Name of the PDB
+  name: esm2-inference-pdb
+
+  # Namespace where the PDB applies
+  namespace: esm2-inference
+
+spec:
+  # Ensure at least 1 pod is always available
+  # This prevents Kubernetes from evicting all inference pods
+  # during voluntary disruptions.
+  minAvailable: 1
+
+  # Selects the pods this PDB applies to
+  selector:
+    matchLabels:
+      app: esm2-inference

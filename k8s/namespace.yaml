@@ -1,0 +1,16 @@
+# Kubernetes core API version
+apiVersion: v1
+
+# We are creating a Namespace resource
+kind: Namespace
+
+metadata:
+  # Name of the namespace.
+  # All ESM-2 inference resources (Deployment, Service, etc.)
+  # will be logically isolated inside this namespace.
+  name: esm2-inference
+
+  # Labels help identify and group related Kubernetes resources.
+  # This allows filtering, monitoring, and policy targeting.
+  labels:
+    app: esm2-inference

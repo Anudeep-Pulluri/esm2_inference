@@ -1,0 +1,106 @@
+# Kubernetes API version for Deployment resource
+apiVersion: apps/v1
+
+# We are creating a Deployment (manages Pods and replicas)
+kind: Deployment
+
+metadata:
+  # Name of the deployment
+  name: esm2-inference
+  
+  # Namespace where this deployment will live
+  namespace: esm2-inference
+  
+  # Labels help Kubernetes identify and group resources
+  labels:
+    app: esm2-inference
+
+spec:
+  # Number of pod replicas (horizontal scaling)
+  replicas: 1
+
+  # Selector tells the Deployment how to find Pods it manages
+  selector:
+    matchLabels:
+      app: esm2-inference
+
+  # Pod template (defines how each Pod should look)
+  template:
+    metadata:
+      labels:
+        app: esm2-inference
+
+    spec:
+      # Use NVIDIA runtime (required for GPU workloads)
+      runtimeClassName: nvidia
+
+      # Always restart container if it crashes
+      restartPolicy: Always
+
+      # Allows scheduling on GPU nodes that may have taints
+      tolerations:
+        - key: "nvidia.com/gpu"
+          operator: "Exists"
+          effect: "NoSchedule"
+
+      containers:
+        - name: esm2-inference
+
+          # Docker image to deploy
+          image: esm2_inference:latest
+
+          # Only pull image if not already present on node
+          imagePullPolicy: IfNotPresent
+
+          # Expose container port
+          ports:
+            - containerPort: 8000
+
+          # Resource allocation for this container
+          resources:
+            requests:
+              # Minimum resources guaranteed
+              cpu: "4"
+              memory: "16Gi"
+              nvidia.com/gpu: 8   # Request 8 GPUs
+            limits:
+              # Maximum resources container can use
+              cpu: "8"
+              memory: "32Gi"
+              nvidia.com/gpu: 8   # Limit to 8 GPUs
+
+          # Mount shared memory volume
+          volumeMounts:
+            - name: dshm
+              mountPath: /dev/shm
+
+          # Startup probe ensures app initializes successfully
+          startupProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            failureThreshold: 60  # Allow up to 5 minutes (60 * 5s)
+            periodSeconds: 5
+
+          # Readiness probe checks if app is ready to serve traffic
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 5
+            periodSeconds: 10
+
+          # Liveness probe checks if container is still healthy
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 30
+            periodSeconds: 20
+
+      # Define volumes used by the container
+      volumes:
+        - name: dshm
+          emptyDir:
+            # Allocate RAM-backed shared memory
+            medium: Memory

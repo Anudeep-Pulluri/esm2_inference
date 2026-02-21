@@ -1,0 +1,37 @@
+# Kubernetes core API version
+apiVersion: v1
+
+# A Service provides stable networking and load balancing
+# for a group of Pods.
+kind: Service
+
+metadata:
+  # Name of the Service
+  name: esm2-inference
+
+  # Namespace where the Service exists
+  namespace: esm2-inference
+
+  # Labels help organize and identify resources
+  labels:
+    app: esm2-inference
+
+spec:
+  # ClusterIP exposes the Service internally within the cluster.
+  # This is appropriate for backend inference APIs.
+  type: ClusterIP
+
+  # Selects Pods with this label.
+  # Traffic will be routed to matching Pods.
+  selector:
+    app: esm2-inference
+
+  ports:
+    - # Port exposed by the Service inside the cluster
+      port: 80
+
+      # Port on the container (FastAPI runs on 8000)
+      targetPort: 8000
+
+      # Communication protocol
+      protocol: TCP

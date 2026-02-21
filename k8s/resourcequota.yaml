@@ -1,0 +1,32 @@
+# Kubernetes core API version
+apiVersion: v1
+
+# Defines a ResourceQuota for a namespace
+# This limits the total amount of compute resources that can be consumed
+# by all pods within the namespace.
+kind: ResourceQuota
+
+metadata:
+  # Name of the ResourceQuota
+  name: esm2-inference-quota
+
+  # Namespace where this quota is enforced
+  namespace: esm2-inference
+
+spec:
+  hard:
+    # Maximum total CPU requested across all pods in this namespace
+    requests.cpu: "16"
+
+    # Maximum total memory requested across all pods
+    requests.memory: 64Gi
+
+    # Maximum total CPU limits across all pods
+    limits.cpu: "32"
+
+    # Maximum total memory limits across all pods
+    limits.memory: 128Gi
+
+    # Maximum total GPUs that can be requested in this namespace
+    # Ensures we do not exceed available GPU capacity (e.g., 8-GPU node)
+    requests.nvidia.com/gpu: "8"
