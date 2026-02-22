@@ -16,7 +16,6 @@ def test_parallel_distribution(
     mock_cuda,
     mock_count,
 ):
-
     """
     Unit test to validate multi-GPU batch distribution logic.
 
