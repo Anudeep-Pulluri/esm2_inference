@@ -1,20 +1,22 @@
-import pytest
 from unittest.mock import patch, MagicMock
 from inference import ESM2Inference
 
 
 # Mock CUDA device count to simulate a 4-GPU environment
 @patch("torch.cuda.device_count", return_value=4)
-
 # Mock CUDA availability to simulate GPU-enabled system
 @patch("torch.cuda.is_available", return_value=True)
-
 # Mock model loading to avoid downloading real ESM-2 weights
 @patch("transformers.AutoModel.from_pretrained")
-
 # Mock tokenizer loading to avoid network calls
 @patch("transformers.AutoTokenizer.from_pretrained")
-def test_parallel_distribution(mock_tokenizer, mock_model, mock_cuda, mock_count):
+def test_parallel_distribution(
+    mock_tokenizer,
+    mock_model,
+    mock_cuda,
+    mock_count,
+):
+
     """
     Unit test to validate multi-GPU batch distribution logic.
 
@@ -35,9 +37,9 @@ def test_parallel_distribution(mock_tokenizer, mock_model, mock_cuda, mock_count
 
     # Mock the model forward pass to return deterministic embeddings
     # Simulates: output.last_hidden_state.mean(...).cpu().tolist()
-    fake_output.last_hidden_state.mean.return_value.cpu.return_value.tolist.return_value = [
-        [0.1]
-    ]
+    mean_mock = fake_output.last_hidden_state.mean.return_value
+    cpu_mock = mean_mock.cpu.return_value
+    cpu_mock.tolist.return_value = [[0.1]]
 
     # When fake_model(...) is called, return fake_output
     fake_model.return_value = fake_output
