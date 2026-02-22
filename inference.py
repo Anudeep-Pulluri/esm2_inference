@@ -89,36 +89,43 @@ class ESM2Inference:
             self.devices.append(device)
             self.models.append(model)
 
-    def _infer_on_device(self, model, device, sequences: List[str]):
+    def _infer_on_device(self, model, device, indexed_sequences):
         """
-        Execute inference on a specific device.
+        Runs inference on a specific device (GPU or CPU).
 
-        This method:
-        - Tokenizes input sequences
-        - Moves tensors to target device
-        - Performs forward pass
-        - Returns mean-pooled embeddings
+        Parameters:
+        - model: The ESM2 model replica assigned to this device
+        - device: The device string (e.g., "cuda:0" or "cpu")
+        - indexed_sequences: List of tuples (original_index, sequence)
+
+        Returns:
+        - List of tuples (original_index, embedding)
         """
-
-        # Optional simulated latency for scaling benchmark
         if self.simulate_latency > 0:
             time.sleep(self.simulate_latency)
 
-        # Tokenize sequences with padding
+        # Separate original indices and sequences
+        indices = [item[0] for item in indexed_sequences]
+        sequences = [item[1] for item in indexed_sequences]
+
+        # Tokenize batch
         inputs = self.tokenizer(sequences, return_tensors="pt", padding=True)
 
         # Move tensors to correct device
         inputs = {k: v.to(device) for k, v in inputs.items()}
 
-        # Disable gradient computation for inference efficiency
+        # Run forward pass without gradient tracking
         with torch.no_grad():
             outputs = model(**inputs)
 
-        # Mean-pool token embeddings to get sequence-level representation
+        # Compute per-sequence embedding (mean pooling over tokens)
         embeddings = outputs.last_hidden_state.mean(dim=1)
 
-        # Move back to CPU for safe serialization
-        return embeddings.cpu().tolist()
+        # Move embeddings to CPU and convert to Python list
+        embeddings = embeddings.cpu().tolist()
+
+        # Return (index, embedding) pairs
+        return list(zip(indices, embeddings))
 
     def predict(self, sequences: Union[str, List[str]]):
         """
@@ -154,7 +161,7 @@ class ESM2Inference:
             if not isinstance(seq, str) or len(seq.strip()) == 0:
                 raise ValueError("Invalid protein sequence.")
 
-            chunks[idx % num_devices].append(seq)
+            chunks[idx % num_devices].append((idx, seq))
 
         results = []
 
@@ -178,4 +185,9 @@ class ESM2Inference:
             for future in as_completed(futures):
                 results.extend(future.result())
 
-        return {"result": results}
+        results.sort(key=lambda x: x[0])
+
+        # Extract embeddings only
+        ordered_embeddings = [embedding for _, embedding in results]
+
+        return {"result": ordered_embeddings}
