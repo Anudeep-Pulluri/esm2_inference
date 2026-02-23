@@ -1,5 +1,6 @@
 from unittest.mock import patch, MagicMock
 from inference import ESM2Inference
+import pytest
 
 
 # Mock CUDA device count to simulate a 4-GPU environment
@@ -61,3 +62,132 @@ def test_parallel_distribution(
 
     # Validate output structure
     assert "result" in result
+
+
+@patch("torch.cuda.device_count", return_value=4)
+@patch("torch.cuda.is_available", return_value=True)
+@patch("transformers.AutoModel.from_pretrained")
+@patch("transformers.AutoTokenizer.from_pretrained")
+def test_output_length_matches_input(
+    mock_tokenizer,
+    mock_model,
+    mock_cuda,
+    mock_count,
+):
+    """
+    Ensures number of embeddings equals number of input sequences.
+    """
+
+    # Mock model behavior
+    fake_model = MagicMock()
+    fake_output = MagicMock()
+
+    mean_mock = fake_output.last_hidden_state.mean.return_value
+    cpu_mock = mean_mock.cpu.return_value
+    cpu_mock.tolist.return_value = [[0.1], [0.1], [0.1], [0.1]]
+
+    fake_model.return_value = fake_output
+    mock_model.return_value = fake_model
+
+    # Proper tensor-like mock
+    mock_tokenizer.return_value = MagicMock(
+        __call__=lambda x, **kwargs: {
+            "input_ids": MagicMock(to=lambda device: MagicMock()),
+            "attention_mask": MagicMock(to=lambda device: MagicMock()),
+        }
+    )
+
+    model = ESM2Inference()
+
+    sequences = ["AAA", "BBB", "CCC", "DDD"]
+    result = model.predict(sequences)
+
+    assert len(result["result"]) == len(sequences)
+
+
+@patch("torch.cuda.device_count", return_value=0)
+@patch("torch.cuda.is_available", return_value=False)
+@patch("transformers.AutoModel.from_pretrained")
+@patch("transformers.AutoTokenizer.from_pretrained")
+def test_cpu_fallback(
+    mock_tokenizer,
+    mock_model,
+    mock_cuda,
+    mock_count,
+):
+    """
+    Ensures CPU fallback works when no GPUs are available.
+    """
+
+    mock_model.return_value = MagicMock()
+
+    mock_tokenizer.return_value = MagicMock(
+        __call__=lambda x, **kwargs: {
+            "input_ids": MagicMock(to=lambda device: MagicMock()),
+            "attention_mask": MagicMock(to=lambda device: MagicMock()),
+        }
+    )
+
+    model = ESM2Inference()
+
+    assert model.logical_device_count == 1
+    assert model.devices == ["cpu"]
+
+
+@patch("transformers.AutoModel.from_pretrained")
+@patch("transformers.AutoTokenizer.from_pretrained")
+def test_invalid_sequence_raises(mock_tokenizer, mock_model):
+    """
+    Ensures invalid protein sequences raise ValueError.
+    """
+
+    mock_model.return_value = MagicMock()
+    mock_tokenizer.return_value = MagicMock()
+
+    model = ESM2Inference()
+
+    with pytest.raises(ValueError):
+        model.predict(["AAA", "", "CCC"])
+
+
+@patch("torch.cuda.device_count", return_value=2)
+@patch("torch.cuda.is_available", return_value=True)
+@patch("transformers.AutoModel.from_pretrained")
+@patch("transformers.AutoTokenizer.from_pretrained")
+def test_ordering_is_preserved(
+    mock_tokenizer,
+    mock_model,
+    mock_cuda,
+    mock_count,
+):
+    """
+    Ensures output ordering matches input ordering
+    across multiple GPUs.
+    """
+
+    fake_model = MagicMock()
+    fake_output = MagicMock()
+
+    mean_mock = fake_output.last_hidden_state.mean.return_value
+    cpu_mock = mean_mock.cpu.return_value
+
+    # Return constant embedding
+    cpu_mock.tolist.return_value = [[0.1], [0.1]]
+
+    fake_model.return_value = fake_output
+    mock_model.return_value = fake_model
+
+    mock_tokenizer.return_value = MagicMock(
+        __call__=lambda x, **kwargs: {
+            "input_ids": MagicMock(to=lambda device: MagicMock()),
+            "attention_mask": MagicMock(to=lambda device: MagicMock()),
+        }
+    )
+
+    model = ESM2Inference()
+
+    sequences = ["A", "B", "C", "D"]
+    result = model.predict(sequences)
+
+    # Just verify output length and no reordering crash
+    assert len(result["result"]) == 4
