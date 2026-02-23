@@ -47,7 +47,7 @@ spec:
         - name: esm2-inference
 
           # Docker image to deploy
-          image: esm2_inference:latest
+          image: esm2_inference:v1.0.0
 
           # Only pull image if not already present on node
           imagePullPolicy: IfNotPresent

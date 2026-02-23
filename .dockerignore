@@ -1,0 +1,32 @@
+# Virtual environments
+venv/
+.env/
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Pytest
+.pytest_cache/
+
+# Git
+.git/
+.gitignore
+.github/
+
+# Local development files
+.DS_Store
+.vscode/
+.idea/
+
+# Tests
+tests/
+
+# Build artifacts
+build/
+dist/
+
+# Benchmark script
+benchmark.py
